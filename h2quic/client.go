@@ -68,6 +68,7 @@ func newClient(
 	if quicConfig != nil {
 		config = quicConfig
 	}
+	// fmt.Printf("AT NEWCLIENT FixedNumberPaths: %d\n", config.FixedNumberPaths)
 	return &client{
 		hostname:        authorityAddr("https", hostname),
 		responses:       make(map[protocol.StreamID]chan *http.Response),

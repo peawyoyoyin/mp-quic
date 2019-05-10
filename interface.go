@@ -123,6 +123,8 @@ type Config struct {
 	CacheHandshake bool
 	// Should the host try to create new paths, if possible?
 	CreatePaths bool
+	// Fixed Number Paths
+	FixedNumberPaths int
 }
 
 // A Listener for incoming QUIC connections

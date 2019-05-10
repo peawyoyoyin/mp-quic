@@ -199,11 +199,13 @@ func populateClientConfig(config *Config) *Config {
 		KeepAlive:      config.KeepAlive,
 		CacheHandshake: config.CacheHandshake,
 		CreatePaths:    config.CreatePaths,
+		FixedNumberPaths: config.FixedNumberPaths,
 	}
 }
 
 // establishSecureConnection returns as soon as the connection is secure (as opposed to forward-secure)
 func (c *client) establishSecureConnection(conn connection) error {
+	// fmt.Printf("AT ESTABLISH FixedNumberPaths: %d\n", c.config.FixedNumberPaths)
 	if err := c.createNewSession(nil, conn); err != nil {
 		return err
 	}
@@ -391,6 +393,7 @@ func (c *client) handlePacketWithVersionFlag(hdr *wire.PublicHeader, remoteAddr 
 
 func (c *client) createNewSession(negotiatedVersions []protocol.VersionNumber, conn connection) error {
 	var err error
+	// fmt.Printf("AT CREATENEWSESSION FixedNumberPaths: %d\n", c.config.FixedNumberPaths)
 	c.session, c.handshakeChan, err = newClientSession(
 		conn,
 		c.pconnMgr,
