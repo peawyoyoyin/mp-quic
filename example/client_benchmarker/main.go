@@ -22,6 +22,7 @@ func main() {
 	multipath := flag.Bool("m", false, "multipath")
 	output := flag.String("o", "", "logging output")
 	cache := flag.Bool("c", false, "cache handshake information")
+	fixedNumberPaths := flag.Int("fnp", 0, "FixedNumberPaths")
 	flag.Parse()
 	urls := flag.Args()
 
@@ -43,6 +44,7 @@ func main() {
 	quicConfig := &quic.Config{
 		CreatePaths: *multipath,
 		CacheHandshake: *cache,
+		FixedNumberPaths: *fixedNumberPaths,
 	}
 
 	hclient := &http.Client{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	//"strconv"
 
 	"github.com/lucas-clemente/quic-go/congestion"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
@@ -138,24 +139,24 @@ func (pm *pathManager) createPath(locAddr net.UDPAddr, remAddr net.UDPAddr) erro
 	defer pm.sess.pathsLock.Unlock()
 	paths := pm.sess.paths
 	fmt.Printf("%d paths\n", len(paths))
-	if pm.sess.config.FixedNumberPaths > 0 && len(paths) > pm.sess.config.FixedNumberPaths {
-		return nil
-	}
+	
 	for _, pth := range paths {
 		locAddrPath := pth.conn.LocalAddr().String()
 		remAddrPath := pth.conn.RemoteAddr().String()
 
 		// fmt.Printf("FixedNumberPaths: %d\n", pm.sess.config.FixedNumberPaths)
-
-		if pm.sess.config.FixedNumberPaths == 0 {
-			// fmt.Println("Not FixedNumberPaths")
-
 			if locAddr.String() == locAddrPath && remAddr.String() == remAddrPath {
 				// Path already exists, so don't create it again
 				return nil
 			}
-		}
 	}
+
+	var pathAddr = locAddr.String()
+	// if pm.sess.config.FixedNumberPaths > 0 && fnp > 0 {
+	// 	pathAddr += " " + strconv.Itoa(fnp - 1)
+	// }
+	fmt.Printf("pathAddr %s\n", pathAddr)
+
 	// No matching path, so create it
 	pth := &path{
 		pathID: pm.nxtPathID,
@@ -167,7 +168,6 @@ func (pm *pathManager) createPath(locAddr net.UDPAddr, remAddr net.UDPAddr) erro
 	if utils.Debug() {
 		utils.Debugf("Created path %x on %s to %s\n", pm.nxtPathID, locAddr.String(), remAddr.String())
 	}
-	fmt.Printf("Created path %x on %s to %s\n", pm.nxtPathID, locAddr.String(), remAddr.String())
 
 	pm.nxtPathID += 2
 	// Send a PING frame to get latency info about the new path and informing the
@@ -180,6 +180,7 @@ func (pm *pathManager) createPaths() error {
 	if utils.Debug() {
 		utils.Debugf("Path manager tries to create paths")
 	}
+	fmt.Println("createPaths")
 	// fmt.Printf("creating paths...\n")
 
 	// XXX (QDC): don't let the server create paths for now
@@ -187,34 +188,37 @@ func (pm *pathManager) createPaths() error {
 		pm.advertiseAddresses()
 		return nil
 	}
+
+	if pm.sess.config.FixedNumberPaths > 0 {
+		pm.pconnMgr.SetupAdditionalPconns(pm.sess.config.FixedNumberPaths)
+	}
+
+	for k, _ := range pm.pconnMgr.pconns {
+		fmt.Printf("conn %s\n", k)
+	}
+
 	// TODO (QDC): clearly not optimali
 	pm.pconnMgr.mutex.Lock()
 	defer pm.pconnMgr.mutex.Unlock()
 
-	if pm.sess.config.FixedNumberPaths > 0 {
-		fmt.Println("FixedNumberPathsDetected, creating paths")
-		
-		locAddr := pm.pconnMgr.localAddrs[0]
-		remAddr := pm.remoteAddrs4[0]
+	for _, locAddr := range pm.pconnMgr.localAddrs {
+		version := getIPVersion(locAddr.IP)
 
-		index := 0
-		for index < pm.sess.config.FixedNumberPaths {
-			err := pm.createPath(locAddr, remAddr)
-			if err != nil {
-				return err
-			}
-			index += 1
+		var addrs []net.UDPAddr = pm.remoteAddrs6
+		if version == 4 {
+			addrs = pm.remoteAddrs4
 		}
-	} else {
-		for _, locAddr := range pm.pconnMgr.localAddrs {
-			version := getIPVersion(locAddr.IP)
 
-			var addrs := pm.remoteAddrs6
-			if version == 4 {
-				addrs = pm.remoteAddrs4
-			}
-
-			for _, remAddr := range addrs {
+		for _, remAddr := range addrs {
+			if pm.sess.config.FixedNumberPaths > 0 {
+				fmt.Printf("FNP %d\n", pm.sess.config.FixedNumberPaths)
+				for i := 0; i < pm.sess.config.FixedNumberPaths; i++ {
+					err := pm.createPath(locAddr, remAddr)
+					if err != nil {
+						return err
+					}
+				}
+			} else {
 				err := pm.createPath(locAddr, remAddr)
 				if err != nil {
 					return err
@@ -222,6 +226,7 @@ func (pm *pathManager) createPaths() error {
 			}
 		}
 	}
+
 	pm.sess.schedulePathsFrame()
 	return nil
 }

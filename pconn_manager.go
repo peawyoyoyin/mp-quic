@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"fmt"
 
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/utils"
@@ -36,6 +37,8 @@ type pconnManager struct {
 	closed      chan struct{}
 	errorConn   chan error
 	timer       *time.Timer
+	
+	additionalPconnsSetup bool
 }
 
 // Setup the pconn_manager and the pconnAny connection
@@ -48,6 +51,8 @@ func (pcm *pconnManager) setup(pconnArg net.PacketConn, listenAddr net.Addr) err
 	pcm.closed = make(chan struct{}, 1)
 	pcm.errorConn = make(chan error, 1) // Made non-blocking for tests
 	pcm.timer = time.NewTimer(0)
+
+	pcm.additionalPconnsSetup = false
 
 	if pconnArg == nil {
 		// XXX (QDC): waiting for native support of SO_REUSEADDR in go...
@@ -191,6 +196,50 @@ func (pcm *pconnManager) createPconn(ip net.IP) (*net.UDPAddr, error) {
 	default:
 	}
 	return locAddr, nil
+}
+
+func (pcm *pconnManager) createAdditionalPconn(ip net.IP, i int) (*net.UDPAddr, error) {
+	pconn, err := net.ListenUDP("udp", &net.UDPAddr{IP: ip, Port: 0})
+	if err != nil {
+		return nil, err
+	}
+	locAddr, err := net.ResolveUDPAddr("udp", pconn.LocalAddr().String())
+	if err != nil {
+		return nil, err
+	}
+	pcm.mutex.Lock()
+	pcm.pconns[locAddr.String()] = pconn
+	pcm.mutex.Unlock()
+	if utils.Debug() {
+		utils.Debugf("Created pconn on %s", pconn.LocalAddr().String())
+	}
+	// Start to listen on this new socket
+	go pcm.listen(pconn)
+	// Don't block
+	select {
+	case pcm.changePaths <- struct{}{}:
+	default:
+	}
+	return locAddr, nil
+}
+
+func (pcm *pconnManager) SetupAdditionalPconns(fnp int) error {
+	if pcm.additionalPconnsSetup {
+		return nil
+	}
+	fmt.Printf("creating %d additional pconns\n", fnp)
+	for i:=0; i<fnp; i++ {
+		for _, locAddr := range pcm.localAddrs {
+			locAddr, err := pcm.createAdditionalPconn(locAddr.IP, i)
+			if err != nil {
+				return err
+			}
+			pcm.localAddrs = append(pcm.localAddrs, *locAddr)
+		}
+	}
+	fmt.Println("setup additional pconns complete")
+	pcm.additionalPconnsSetup = true
+	return nil
 }
 
 func (pcm *pconnManager) createPconns() error {
